@@ -11,7 +11,7 @@
 
 #include <avr/io.h>
 #include <avr/power.h>
-#include <avr/delay.h>
+#include <util/delay.h>
 #include <avr/interrupt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +28,7 @@ int main(void)
 
 	lcd_init();
 
-	printf("HELLO WORLD");
+	printf("I GOT IT TO WORK");
 	
 
     while (1) {

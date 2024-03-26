@@ -35,4 +35,4 @@
 
 /* Whether to read the busy flag, or fall back to
    worst-time delays. */
-#define USE_BUSY_BIT 1
+#define USE_BUSY_BIT 0
