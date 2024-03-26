@@ -5,16 +5,22 @@
  * Author : Rabi Alaya and Alex Banning
  */ 
 
-#include <avr/io.h>
-#include <stdio.h>
+#ifndef F_CPU
+#define F_CPU 8000000UL // 8 MHz clock speed
+#endif
 
+#include <avr/io.h>
+#include "LCD_lib/lcd.h"
 
 int main(void)
 {
-    /* Replace with your application code */
+	lcd_init(2);
+	lcd_clrscr();
+	lcd_putc('A');
+
     while (1) 
     {
-		printf("Hello World");
+		
     }
 }
 
