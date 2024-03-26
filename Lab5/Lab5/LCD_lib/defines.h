@@ -13,33 +13,26 @@
  * this stuff is worth it, you can buy me a beer in return.        Joerg Wunsch
  * ----------------------------------------------------------------------------
  *
- * Stdio demo, upper layer of LCD driver.
+ * General stdiodemo defines
+ *
+ * Replace X and Y with your definitions based on your hardware
  *
  * $Id$
  */
 
-/*
- * Initialize LCD controller.  Performs a software reset.
- */
-void	lcd_init(void);
+/* CPU frequency */
+#define F_CPU 8000000UL   // define your CPU Frequency
 
-/*
- * Send one character to the LCD.
- */
-int	lcd_putchar(char c, FILE *stream);
+/* UART baud rate */
+#define UART_BAUD  9600   // define your UART baud rate
 
-/*
-Returns the cursor to the start of the LCD 
-Column 0 Row 0
-*/
-void home(void);
+/* HD44780 LCD port connections */
+#define HD44780_RS B, 5   // X = PORT Name | Y = PORT number
+#define HD44780_RW B, 4   // X = PORT Name | Y = PORT number
+#define HD44780_E  B, 3   // X = PORT Name | Y = PORT number
+/* The data bits have to be not only in ascending order but also consecutive. */
+#define HD44780_D4 C, 0   // X = PORT Name | Y = PORT number
 
-/*
-Clears the screen of the LCD and returns the cursor home
-*/
-void clear(void);
-
-/*
-Puts the cursor on the second row 
-*/
-void row2(void);
+/* Whether to read the busy flag, or fall back to
+   worst-time delays. */
+#define USE_BUSY_BIT 1
