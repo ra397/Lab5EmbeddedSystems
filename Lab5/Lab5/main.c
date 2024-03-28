@@ -6,7 +6,7 @@
  */ 
 
 #ifndef F_CPU
-#define F_CPU 8000000UL // 8 MHz clock speed
+#define F_CPU 16000000UL // 8 MHz clock speed
 #endif
 
 #include <avr/io.h>
@@ -21,45 +21,36 @@
 
 FILE lcd_str = FDEV_SETUP_STREAM(lcd_putchar, NULL, _FDEV_SETUP_WRITE);
 
-#define PWM_PERIOD 100
+#define TOP 200
 
-volatile uint8_t on_time = 50;
+volatile uint8_t COMPARE = 100;
 
 void timer0_init();
-void frequencyToString(double frequency, char* str_freq, size_t max_len);
+void doubleToString(double double_value, char* str_freq, size_t max_len);
 
-ISR(TIMER0_COMPA_vect)
+
+ISR(TIMER0_OVF_vect)
 {
-	static uint8_t is_high = 0;
-
-	if (is_high) {
-		// If the pin was high, set it low and adjust OCR0A for the remainder of the period
-		PORTD &= ~(1 << 5);
-		OCR0A = PWM_PERIOD - on_time;
-		is_high = 0;
-		} else {
-		// If the pin was low, set it high and adjust OCR0A for the on_time
-		PORTD |= (1 << 5);
-		OCR0A = on_time;
-		is_high = 1;
-	}
-}
+	
+} 
 
 int main(void)
 {
 	stdout = &lcd_str; // redefines std output to output to LCD file output, that file is what writes to LCD
-	clock_prescale_set(2);
+	clock_prescale_set(1);
 
 	lcd_init();
+	printf("Hello TA:");
+	row2();
 	
 	DDRD = DDRD | (1 << 5); // set PD5 as output
 	
 	timer0_init();
 	
-	double frequency = (double) (F_CPU / ((OCR0A + 1) * 4)) + 1 / 1000;
+	double dutyCycle = (double) COMPARE / TOP;
 	char str_freq[20];
-	frequencyToString(frequency, str_freq, sizeof(str_freq));
-	printf("Freq: %s", str_freq);
+	doubleToString(dutyCycle, str_freq, sizeof(str_freq));
+	printf("Duty Cycle: %s", str_freq);
 	
 	
     while (1) {
@@ -68,29 +59,42 @@ int main(void)
 	
 }
 
+/*
+* Function that initializes and starts 8-bit Timer0.
+* https://ww1.microchip.com/downloads/en/DeviceDoc/Atmel-7810-Automotive-Microcontrollers-ATmega328P_Datasheet.pdf
+* WGM00 = 1, WGM01 = 0, WGM02 = 1 for Mode 5 (PWM, phase correct) from table 14-8
+* COM0B0 = 0, COM0B1 = 1 to clear OC0B on compare match when up-counting. Set OC0B on compare match when
+down-counting. Table 14-7. This is what is toggling OC0B, thus toggling PD5.
+* CS00 = 1, CS01 = 0, CS02 = 0 for no prescaling from table 14-9
+*/
 void timer0_init() {
-	// Set the timer to CTC mode (Clear Timer on Compare Match) (WGM01 = 1, WGM00 = 0)
-	TCCR0A |= (1 << WGM01);
+	// Set mode
+	TCCR0A |= (1 << WGM00) | (1 << COM0B1); // Set timer to PWM, phase correct mode (mode 5), WGM00 = 1, WGM02 = 1
 	
 	// Set the prescaler
-	TCCR0B = (1 << CS00);
+	TCCR0B = (1 << CS00) | (1 << WGM02); // No prescaling
 	
-	// Set OCR0A for the compare match value
-	OCR0A = PWM_PERIOD;
+	// Set OCR0A to TOP value and OCR0B to COMPARE value
+	OCR0A = TOP;
+	
+	OCR0B = COMPARE;
 
-	// Enable Timer0 Output Compare Match A Interrupt
-	TIMSK0 |= (1 << OCIE0A);
+	// Enable overflow interrupt
+	TIMSK0 |= (1 << TOIE0);
 	
 	// Enable global interrupts
 	sei();
 }
 
-void frequencyToString(double frequency, char *str_freq, size_t max_len) {
+/*
+* A function converts a double value to a string
+*/
+void doubleToString(double double_value, char *str_freq, size_t max_len) {
 	// Extract integer part
-	int intPart = (int)frequency;
+	int intPart = (int) double_value;
 	
 	// Extract fractional part
-	int fracPart = (int)((frequency - intPart) * 100); // Considering two decimal places
+	int fracPart = (int)((double_value - intPart) * 100); // Considering two decimal places
 
 	// Convert to string
 	snprintf(str_freq, max_len, "%d.%02d", intPart, fracPart);
