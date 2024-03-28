@@ -21,11 +21,12 @@
 
 FILE lcd_str = FDEV_SETUP_STREAM(lcd_putchar, NULL, _FDEV_SETUP_WRITE);
 
-#define PWM_PERIOD 1000
+#define PWM_PERIOD 100
 
-volatile uint8_t on_time = 10;
+volatile uint8_t on_time = 50;
 
 void timer0_init();
+void frequencyToString(double frequency, char* str_freq, size_t max_len);
 
 ISR(TIMER0_COMPA_vect)
 {
@@ -50,11 +51,15 @@ int main(void)
 	clock_prescale_set(2);
 
 	lcd_init();
-	printf("I GOT IT TO WORK");
 	
 	DDRD = DDRD | (1 << 5); // set PD5 as output
 	
 	timer0_init();
+	
+	double frequency = (double) (F_CPU / ((OCR0A + 1) * 4)) + 1 / 1000;
+	char str_freq[20];
+	frequencyToString(frequency, str_freq, sizeof(str_freq));
+	printf("Freq: %s", str_freq);
 	
 	
     while (1) {
@@ -67,16 +72,27 @@ void timer0_init() {
 	// Set the timer to CTC mode (Clear Timer on Compare Match) (WGM01 = 1, WGM00 = 0)
 	TCCR0A |= (1 << WGM01);
 	
-	// Set the pre-scaler to 1024 and start the timer
-	TCCR0B |= (1 << CS02) | (1 << CS00);
-
-	// Enable Timer0 Output Compare Match A Interrupt
-	TIMSK0 |= (1 << OCIE0A);
+	// Set the prescaler
+	TCCR0B = (1 << CS00);
 	
 	// Set OCR0A for the compare match value
 	OCR0A = PWM_PERIOD;
 
+	// Enable Timer0 Output Compare Match A Interrupt
+	TIMSK0 |= (1 << OCIE0A);
+	
 	// Enable global interrupts
 	sei();
+}
+
+void frequencyToString(double frequency, char *str_freq, size_t max_len) {
+	// Extract integer part
+	int intPart = (int)frequency;
+	
+	// Extract fractional part
+	int fracPart = (int)((frequency - intPart) * 100); // Considering two decimal places
+
+	// Convert to string
+	snprintf(str_freq, max_len, "%d.%02d", intPart, fracPart);
 }
 
