@@ -6,7 +6,7 @@
  */ 
 
 #ifndef F_CPU
-#define F_CPU 16000000UL // 8 MHz clock speed
+#define F_CPU 16000000UL // 16 MHz clock speed
 #endif
 
 #include <avr/io.h>
@@ -22,6 +22,9 @@
 FILE lcd_str = FDEV_SETUP_STREAM(lcd_putchar, NULL, _FDEV_SETUP_WRITE);
 
 #define TOP 200
+#define RPG_A_PIN PINB1
+#define RPG_B_PIN PINB0
+#define RPG_PORT PINB
 
 volatile uint8_t COMPARE = 100;
 
@@ -31,7 +34,8 @@ void doubleToString(double double_value, char* str_freq, size_t max_len);
 
 ISR(TIMER0_OVF_vect)
 {
-	
+	// Update the COMPARE value
+	OCR0B = COMPARE;
 } 
 
 int main(void)
@@ -44,6 +48,8 @@ int main(void)
 	row2();
 	
 	DDRD = DDRD | (1 << 5); // set PD5 as output
+	DDRB = DDRB & ~((1 << RPG_A_PIN) | (1 << RPG_B_PIN));
+	
 	
 	timer0_init();
 	
