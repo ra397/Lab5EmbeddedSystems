@@ -1,8 +1,11 @@
 /*
- * Lab5.c
- *
- * Created: 3/26/2024 12:24:30 PM
- * Author : Rabi Alaya and Alex Banning
+ * Lab 5 Embedded Systems
+ * Rabi Alaya and Alex Banning
+ * 04/08/2024
+ * Description: a full embedded system that includes an ATmega328p microcontroller, a fan,
+ * an RPG, a push-button, an LCD display, and a buzzer. A user is able to control the fan's speed using the
+ * RPG, the RPM and the duty cycle are displayed on the LCD in the first mode and the RPM and fan status in the second mode.
+ * The toggling between display modes is done through the push-button. The buzzer goes off and a warning is displayed if the fan stalls.  
  */ 
 
 #ifndef F_CPU
@@ -127,10 +130,12 @@ void timer0_init() {
 	sei();
 }
 
+// Function that starts timer1
 void start16BitTimer() {
 	TCCR1B = (1 << CS11);
 }
 
+// Function that stops timer1
 void stop16BitTimer() {
 	TCCR1B = (1 << CS10);
 }
@@ -159,6 +164,9 @@ void read_rpg() {
 	encoder_old_state = encoder_new_state;
 }
 
+/*
+* A function that displays information to the LCD depending on the display mode
+*/
 void display_to_LCD() {
 	clear();
 	home();
@@ -171,35 +179,54 @@ void display_to_LCD() {
 	sprintf(str_rpm, "RPM = %4.0f", rpm);
 	printf("%s", str_rpm);
 	
+	float dutyCycle = (100.0 * ((float) ((2 * (float) COMPARE + 1) / (2 * TOP)))) - 0.25;
+	
 	if (displayMode == 0) {
 		row2();
-		float dutyCycle = (100.0 * ((float) ((2 * (float) COMPARE + 1) / (2 * TOP)))) - 0.25;
 		char str_duty[20];
-		sprintf(str_duty, "D = %4.2f", dutyCycle);
-		printf("%s", str_duty);
+		
+		if (dutyCycle < 12.0) {
+			sound_buzzer();
+			printf("Fan Stalled");
+		} else {
+			mute_buzzer();
+			sprintf(str_duty, "D = %4.2f", dutyCycle);
+			printf("%s", str_duty);
+		}
 	} else {
 		row2();
-		if (rpm < 2400) {
-			printf("Low RPM");
+		
+		if (dutyCycle < 12.0) {
+			sound_buzzer();
+			printf("Fan Stalled");
 		} else {
-			printf("Fan OK");
+			mute_buzzer();
+			if (rpm < 2400) {
+				printf("Low RPM");
+			} else {
+				printf("Fan OK");
+			}
 		}
 	}
 }
 
+// A function that sounds the buzzer
 void sound_buzzer() {
 	PORTC |= (1 << 4);
 }
 
+// A function that mutes the buzzer
 void mute_buzzer() {
 	PORTC &= ~(1 << 4);
 }
 
+// A function that changes the display mode when the button is pressed
 void handleButtonPress() {
 	if (displayMode == 0) displayMode = 1;
 	else if (displayMode == 1) displayMode = 0;
 }
 
+// A function that checks if the button has been clicked and handles the push accordingly
 void checkIfButtonIsPressed() {
 	 if (!(PIND & (1 << PIND2))) {
 		 if (!buttonWasPressed) { // Button is pressed now, but wasn't pressed before
