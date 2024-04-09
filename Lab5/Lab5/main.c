@@ -21,33 +21,46 @@
 
 FILE lcd_str = FDEV_SETUP_STREAM(lcd_putchar, NULL, _FDEV_SETUP_WRITE);
 
-#define TOP 200
 #define RPG_A_PIN PINB1
 #define RPG_B_PIN PINB0
 #define RPG_PORT PINB
 
-volatile uint8_t COMPARE = 100;
+static uint16_t TOP = 200;
+volatile uint16_t COMPARE = 100;
+
 volatile uint8_t encoder_old_state = 0;
+
+volatile uint16_t pulse_count = 0;
+volatile uint16_t rpm = 0;
 
 void timer0_init();
 void timer1_init();
 void read_rpg();
 void display_to_LCD();
-void doubleToString(double double_value, char* str_freq, size_t max_len);
-void intToString(int value, char* str);
 
+// timer0 overflow ISR
 ISR(TIMER0_OVF_vect)
 {
 	cli();
-	// Update the COMPARE value
-	OCR0B = COMPARE;
+	OCR0B = COMPARE; // Update the COMPARE value
 	sei();
 }
 
+// PD3 Toggle ISR
 ISR(INT1_vect)
 {
 	cli();
-	
+	pulse_count++;
+	sei();
+}
+
+// timer1 overflow ISR
+ISR(TIMER1_OVF_vect) 
+{
+	cli();
+	uint16_t pulses = pulse_count;
+	pulse_count = 0; // Reset pulse count for the next period
+	rpm = (pulses/4) * 60;
 	sei();
 }
 
@@ -64,10 +77,12 @@ int main(void)
 	PORTB |= (1 << RPG_A_PIN) | (1 << RPG_B_PIN); // Enable pull-up resistors on RPG
 	
 	DDRD &= ~(1 << 3); // Set PD3 as input
+	// Setup PD3 ISR
 	EICRA |= (1 << ISC11) | (1 << ISC10);
 	EIMSK |= (1 << INT1);
 	
 	timer0_init();
+	timer1_init();
 		
     while (1) {
 		display_to_LCD();
@@ -104,60 +119,17 @@ void timer0_init() {
 }
 
 void timer1_init() {
-	
-}
+	// Configure Timer1
+	TCCR1A = 0; // Set entire TCCR1A register to 0
+	TCCR1B = 0; // Same for TCCR1B
 
-void intToString(int value, char* str) {
-	char temp[12]; // Temporary buffer to hold the reverse of the integer digits
-	int i = 0;     // Index for the temporary buffer
+	// Set timer count for 1s overflow assuming a 16MHz clock with 1024 prescaler
+	// For different clock speeds or prescalers, adjust this value
+	TCNT1 = 63973;
 
-	// Handle 0 explicitly, otherwise empty string is printed for 0
-	if (value == 0) {
-		str[i++] = '0';
-		str[i] = '\0'; // Null-terminate the string
-		return;
-	}
-
-	// Process individual digits
-	while (value != 0) {
-		int rem = value % 10;
-		temp[i++] = rem + '0'; // Convert integer to character
-		value = value / 10;
-	}
-
-	temp[i] = '\0'; // Null-terminate the temporary string
-
-	// Reverse the temporary string to get the correct order
-	int start = 0;
-	int end = i - 1;
-	while (start < end) {
-		// Swap characters
-		char t = temp[start];
-		temp[start] = temp[end];
-		temp[end] = t;
-		start++;
-		end--;
-	}
-
-	// Copy the temporary string to the output string
-	for (int j = 0; j < i; j++) {
-		str[j] = temp[j];
-	}
-	str[i] = '\0'; // Ensure the output string is null-terminated
-}
-
-/*
-* A function converts a double value to a string
-*/
-void doubleToString(double double_value, char *str_freq, size_t max_len) {
-	// Extract integer part
-	int intPart = (int) double_value;
-	
-	// Extract fractional part
-	int fracPart = (int)((double_value - intPart) * 100); // Considering two decimal places
-
-	// Convert to string
-	snprintf(str_freq, max_len, "%d.%02d", intPart, fracPart);
+	TCCR1B |= (1 << CS10) | (1 << CS12); // Set 1024 prescaler
+	TIMSK1 |= (1 << TOIE1); // Enable timer overflow interrupt
+	sei(); // Enable global interrupts
 }
 
 /*
@@ -173,10 +145,8 @@ void read_rpg() {
 	((encoder_old_state == 0x01) && (encoder_new_state == 0x03)) ||
 	((encoder_old_state == 0x03) && (encoder_new_state == 0x02)) ||
 	((encoder_old_state == 0x02) && (encoder_new_state == 0x00))) {
-		// Clockwise rotation
 		COMPARE--;
 		} else {
-		// Counterclockwise rotation
 		COMPARE++;
 	}
 	
@@ -187,14 +157,14 @@ void read_rpg() {
 }
 
 void display_to_LCD() {
-	int int_rpm = 9999;
-	char str_rpm[12];
-	intToString(int_rpm, str_rpm);
-	printf("RPM: %s", str_rpm);
+	home();
+	char str_rpm[20];
+	sprintf(str_rpm, "RPM = %d", rpm);
+	printf("%s", str_rpm);
 	
 	row2();
-	double dutyCycle = (double) (2 * COMPARE + 1) / (2* TOP);
-	char str_freq[20];
-	doubleToString(dutyCycle, str_freq, sizeof(str_freq));
-	printf("Duty Cycle: %s", str_freq);
+	float dutyCycle = (100.0 * ((float) ((2 * (float) COMPARE + 1) / (2 * TOP)))) - 0.25;
+	char str_duty[20];
+	sprintf(str_duty, "D = %4.2f", dutyCycle);
+	printf("%s", str_duty);
 }
