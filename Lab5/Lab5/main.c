@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "LCD_lib/defines.h"
 #include "LCD_lib/lcd.h"
 
@@ -30,13 +31,21 @@ volatile uint16_t COMPARE = 100;
 
 volatile uint8_t encoder_old_state = 0;
 
-volatile uint16_t pulse_count = 0;
-volatile uint16_t rpm = 0;
+volatile uint16_t pulse_count = 9600;
+
+volatile uint8_t buttonWasPressed = 0;
+volatile uint8_t displayMode = 0;
 
 void timer0_init();
 void timer1_init();
+void start16BitTimer();
+void stop16BitTimer();
 void read_rpg();
 void display_to_LCD();
+void sound_buzzer();
+void mute_buzzer();
+void handleButtonPress();
+void checkIfButtonIsPressed();
 
 // timer0 overflow ISR
 ISR(TIMER0_OVF_vect)
@@ -49,18 +58,14 @@ ISR(TIMER0_OVF_vect)
 // PD3 Toggle ISR
 ISR(INT1_vect)
 {
+	uint8_t sreg;
+	stop16BitTimer();
+	sreg = SREG;
 	cli();
-	pulse_count++;
-	sei();
-}
-
-// timer1 overflow ISR
-ISR(TIMER1_OVF_vect) 
-{
-	cli();
-	uint16_t pulses = pulse_count;
-	pulse_count = 0; // Reset pulse count for the next period
-	rpm = (pulses/4) * 60;
+	pulse_count = TCNT1;
+	TCNT1 = 0;
+	SREG = sreg;
+	start16BitTimer();
 	sei();
 }
 
@@ -76,17 +81,21 @@ int main(void)
 	DDRB = DDRB & ~((1 << RPG_A_PIN) | (1 << RPG_B_PIN)); // Set RPG pins as inputs
 	PORTB |= (1 << RPG_A_PIN) | (1 << RPG_B_PIN); // Enable pull-up resistors on RPG
 	
-	DDRD &= ~(1 << 3); // Set PD3 as input
+	DDRD &= ~(1 << 3); // Set PD3 (tachometer) as input
 	// Setup PD3 ISR
-	EICRA |= (1 << ISC11) | (1 << ISC10);
+	EICRA |= (1 << ISC10);
 	EIMSK |= (1 << INT1);
 	
+	DDRC |= (1 << 4); // Set PC4 (buzzer) as output
+	
+	DDRD &= ~(1 << 2); // Set PD2 (button) as input
+	
 	timer0_init();
-	timer1_init();
-		
+				
     while (1) {
 		display_to_LCD();
 		read_rpg();
+		checkIfButtonIsPressed();
 		_delay_ms(10);
     }
 }
@@ -118,18 +127,12 @@ void timer0_init() {
 	sei();
 }
 
-void timer1_init() {
-	// Configure Timer1
-	TCCR1A = 0; // Set entire TCCR1A register to 0
-	TCCR1B = 0; // Same for TCCR1B
+void start16BitTimer() {
+	TCCR1B = (1 << CS11);
+}
 
-	// Set timer count for 1s overflow assuming a 16MHz clock with 1024 prescaler
-	// For different clock speeds or prescalers, adjust this value
-	TCNT1 = 63973;
-
-	TCCR1B |= (1 << CS10) | (1 << CS12); // Set 1024 prescaler
-	TIMSK1 |= (1 << TOIE1); // Enable timer overflow interrupt
-	sei(); // Enable global interrupts
+void stop16BitTimer() {
+	TCCR1B = (1 << CS10);
 }
 
 /*
@@ -157,14 +160,57 @@ void read_rpg() {
 }
 
 void display_to_LCD() {
+	clear();
 	home();
+	
+	float t;
+	t = pulse_count * (1e-6);
+	t = t * 4.0;
+	float rpm = (60.0 / t);
 	char str_rpm[20];
-	sprintf(str_rpm, "RPM = %d", rpm);
+	sprintf(str_rpm, "RPM = %4.0f", rpm);
 	printf("%s", str_rpm);
 	
-	row2();
-	float dutyCycle = (100.0 * ((float) ((2 * (float) COMPARE + 1) / (2 * TOP)))) - 0.25;
-	char str_duty[20];
-	sprintf(str_duty, "D = %4.2f", dutyCycle);
-	printf("%s", str_duty);
+	if (displayMode == 0) {
+		row2();
+		float dutyCycle = (100.0 * ((float) ((2 * (float) COMPARE + 1) / (2 * TOP)))) - 0.25;
+		char str_duty[20];
+		sprintf(str_duty, "D = %4.2f", dutyCycle);
+		printf("%s", str_duty);
+	} else {
+		row2();
+		if (rpm < 2400) {
+			printf("Low RPM");
+		} else {
+			printf("Fan OK");
+		}
+	}
+}
+
+void sound_buzzer() {
+	PORTC |= (1 << 4);
+}
+
+void mute_buzzer() {
+	PORTC &= ~(1 << 4);
+}
+
+void handleButtonPress() {
+	if (displayMode == 0) displayMode = 1;
+	else if (displayMode == 1) displayMode = 0;
+}
+
+void checkIfButtonIsPressed() {
+	 if (!(PIND & (1 << PIND2))) {
+		 if (!buttonWasPressed) { // Button is pressed now, but wasn't pressed before
+			 buttonWasPressed = 1; // Update flag to indicate the button is pressed
+			 
+			 handleButtonPress();
+
+			 // Debounce delay
+			 _delay_ms(5);
+		 }
+	 } else {
+		 buttonWasPressed = 0;
+	 }
 }
